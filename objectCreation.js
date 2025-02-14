@@ -1,5 +1,5 @@
 // ASYNC FUNCTION
-async function createObjects() {
+async function createObjectsRenderBlue() {
     var msg_array = ["<h1>Ch02_ObjectCreation</h1>"];
     // Check WebGPU Support
     if(!navigator.gpu) {
@@ -49,11 +49,23 @@ async function createObjects() {
         device: device,
         format: canvasFormat,
     });
-    // Display messages
-    for(var i=0;i<msg_array.length;i++){
-        document.write(msg_array[i] + "<br /><br />");
-    }
+
+    //Render Pass
+    const renderPass = cmdEncoder.beginRenderPass({
+        colorAttachments: [{
+            view: context.getCurrentTexture().createView(),
+            loadOp: "clear",
+            clearValue: {r: 0.2, g: 0.2, b: 1.0, a: 1.0},
+            storeOp: "store"
+        }]
+    });
+    //Complete Render Pass encoding
+    renderPass.end();
+
+    //Submit the render commands to the GPU
+    device.queue.submit([cmdEncoder.finish()]);
+
 }
 
 // Call function
-createObjects();
+createObjectsRenderBlue();
