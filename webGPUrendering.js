@@ -41,33 +41,32 @@ async function main(device) {
         struct OtherStruct {
           scale: vec2f,
         };
-
-       
-
-        @group(0) @binding(0) var<storage, read> ourStructs: array<OurStruct>;
-        @group(0) @binding(1) var<storage, read> otherStructs: array<OtherStruct>;
-
+ 
         struct VSOutput {
           @builtin(position) position: vec4f,
           @location(0) color: vec4f,
         }
 
+        struct Vertex {
+          position: vec2f,
+        };
+
+        @group(0) @binding(0) var<storage, read> ourStructs: array<OurStruct>;
+        @group(0) @binding(1) var<storage, read> otherStructs: array<OtherStruct>;
+        @group(0) @binding(2) var<storage, read> pos: array<Vertex>;
+
+
         @vertex fn vs (
           @builtin(vertex_index) vertexIndex : u32,
           @builtin(instance_index) instanceIndex: u32
         ) -> VSOutput {
-          let pos = array(
-            vec2f( 0.0,  0.5),  // top center
-            vec2f(-0.5, -0.5),  // bottom left
-            vec2f( 0.5, -0.5)   // bottom right        
-          );
 
           let otherStruct = otherStructs[instanceIndex];
           let ourStruct = ourStructs[instanceIndex];
 
           var vsOut: VSOutput;
           vsOut.position = vec4f(
-            pos[vertexIndex] * otherStruct.scale + ourStruct.offset, 0.0, 1.0);
+            pos[vertexIndex].position * otherStruct.scale + ourStruct.offset, 0.0, 1.0);
           vsOut.color = ourStruct. color;
           return vsOut;
         }
@@ -117,6 +116,18 @@ async function main(device) {
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
   });
 
+  // setup a storage buffer with vertex data
+  const { vertexData, numVertices} = createCircleVertices({
+    radius: 0.5,
+    innerRadius: 0.25,
+  });
+  const vertexStorageBuffer = device.createBuffer({
+    label:'storage buffer vertices',
+    size: vertexData.byteLength,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+  });
+  device.queue.writeBuffer(vertexStorageBuffer, 0, vertexData);
+
   // offsets to the various storage values in float32 indices
   const kColorOffset = 0;
   const kOffsetOffset = 4;
@@ -148,6 +159,7 @@ async function main(device) {
     entries: [
       {binding: 0, resource: {buffer: staticStorageBuffer }},
       {binding: 1, resource: {buffer: changingStorageBuffer }},
+      {binding: 2, resource: {buffer: vertexStorageBuffer }},
     ],
   });
 
@@ -191,7 +203,7 @@ async function main(device) {
 
     pass.setBindGroup(0, bindGroup);
     // call our vertex shader 3 times for each instacne
-    pass.draw(3, kNumObjects);
+    pass.draw(numVertices, kNumObjects);
 
     pass.end();
 
@@ -217,6 +229,53 @@ async function main(device) {
     }
   });
   observer.observe(canvas);
+}
+
+// generate circle vertecies
+function createCircleVertices({
+  radius = 1,
+  numSubdivisions = 24,
+  innerRadius = 0,
+  startAngle = 0,
+  endAngle = Math.PI * 2,
+} = {}) {
+  // 2 triangles per subdivision, 3 verts per tri, 2 values (xy) each.
+  const numVertices = numSubdivisions * 3 * 2;
+  const vertexData = new Float32Array(numSubdivisions * 2 * 3 * 2);
+
+  let offset = 0;
+  const addVertex = (x, y) => {
+    vertexData[offset++] = x;
+    vertexData[offset++] = y;
+  };
+  // 2 triangles per subdivision
+
+  // 0--1 4
+  // | / /|
+  // |/ / |
+  // 2 3--5
+  for(let i=0; i<numSubdivisions;++i){
+    const angle1 = startAngle + (i+0) * (endAngle - startAngle)/numSubdivisions;
+    const angle2 = startAngle + (i+1) * (endAngle - startAngle)/numSubdivisions;
+
+    const c1 = Math.cos(angle1);
+    const s1 = Math.sin(angle1);
+    const c2 = Math.cos(angle2);
+    const s2 = Math.sin(angle2);
+
+    // first triangle
+    addVertex(c1 * radius, s1 * radius);
+    addVertex(c2 * radius, s2 * radius);
+    addVertex(c1 * innerRadius, s1 * innerRadius);
+    // second triangle
+    addVertex(c1 * innerRadius, s1 * innerRadius);
+    addVertex(c2 * radius, s2 * radius);
+    addVertex(c2 * innerRadius, s2 * innerRadius);
+  }
+  return {
+    vertexData,
+    numVertices,
+  };
 }
 
 // A random number between [min and max)
